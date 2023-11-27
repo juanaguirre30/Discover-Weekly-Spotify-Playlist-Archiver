@@ -11,7 +11,7 @@ app = Flask(__name__)
 app.config['SESSION_COOKIE_NAME'] = 'Spotify Cookie'
 
 # set a random secret key to sign the cookie
-app.secret_key = 'c88ac867e9bc460f97be3cd8268a2ddd'
+app.secret_key = '[INSERT SECRET KEY]'
 
 # set the key for the token info in the session dictionary
 TOKEN_INFO = 'token_info'
@@ -80,7 +80,7 @@ def get_token():
 def create_spotify_oauth():
     return SpotifyOAuth(
         client_id = '966f6896d45c4449bdd3f275249f5615',
-        client_secret = 'c88ac867e9bc460f97be3cd8268a2ddd',
+        client_secret = '[INSERT SECRET KEY]',
         redirect_uri = url_for('redirect_page', _external=True),
         scope='user-library-read playlist-modify-public playlist-modify-private'
     )
