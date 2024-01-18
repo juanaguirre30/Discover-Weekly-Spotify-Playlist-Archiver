@@ -16,11 +16,13 @@ app.secret_key = 'c88ac867e9bc460f97be3cd8268a2ddd'
 # set the key for the token info in the session dictionary
 TOKEN_INFO = 'token_info'
 
+# Home Route 
 @app.route('/')
 def login():
-    auth_url = create_spotify_oauth().get_authorize_url()
-    return redirect(auth_url)
+    auth_url = create_spotify_oauth().get_authorize_url() # gets value of url given to user
+    return redirect(auth_url) # redirecting to url
 
+# Redirect Route
 @app.route('/redirect')
 def redirect_page():
     session.clear()
@@ -30,6 +32,7 @@ def redirect_page():
     session[TOKEN_INFO] = token_info
     return redirect(url_for('save_discover_weekly',_external=True))
 
+# Save Discover Weekly Route 
 @app.route('/saveDiscoverWeekly')
 def save_discover_weekly():
     try: 
@@ -38,7 +41,7 @@ def save_discover_weekly():
         print('User not logged in')
         return redirect("/")
 
-    sp = spotipy.Spotify(auth=token_info['access_token'])
+    sp = spotipy.Spotify(auth=token_info['access_token']) # variable for all the API requests 
 
     current_playlists =  sp.current_user_playlists()['items']
     discover_weekly_playlist_id = None
@@ -53,7 +56,14 @@ def save_discover_weekly():
     if not discover_weekly_playlist_id:
         return 'Discover Weekly not found.'
     
-    discover_weekly_playlist = sp.playlist_items(discover_weekly_playlist_id)
+    # creates spotify saved playlist if not already created 
+    if not saved_weekly_playlist_id:
+        temp_playlist = sp.user_playlist_create("juanaguirre158", 'Saved Weekly', True)
+        saved_weekly_playlist_id = temp_playlist
+    
+    discover_weekly_playlist = sp.playlist_items(discover_weekly_playlist_id) # gets the discover weekly tracks 
+    
+    # loop through every song in discover weekly and append them into a list
     song_uris = []
     for song in discover_weekly_playlist['items']:
         song_uri= song['track']['uri']
@@ -77,6 +87,7 @@ def get_token():
 
     return token_info
 
+# Allows for access of user's spotify
 def create_spotify_oauth():
     return SpotifyOAuth(
         client_id = '966f6896d45c4449bdd3f275249f5615',
