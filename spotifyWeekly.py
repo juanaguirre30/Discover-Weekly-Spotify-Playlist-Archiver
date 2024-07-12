@@ -1,99 +1,96 @@
-# import necessary modules
+# Required modules importation
 import time
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from flask import Flask, request, url_for, session, redirect
 
-# initialize Flask app
+# Flask application initialization
 app = Flask(__name__)
 
-# set the name of the session cookie
-app.config['SESSION_COOKIE_NAME'] = 'Spotify Cookie'
+# Configuring the session cookie name
+app.config['SESSION_COOKIE_NAME'] = 'SpotifySession'
 
-# set a random secret key to sign the cookie
-app.secret_key = 'c88ac867e9bc460f97be3cd8268a2ddd'
+# Assigning a secret key for the session
+app.secret_key = 'xyxyxyxyxyxyxyxyxy'
 
-# set the key for the token info in the session dictionary
-TOKEN_INFO = 'token_info'
+# Session key for storing token information
+TOKEN_KEY = 'token_details'
 
-# Home Route 
+# Route for user login
 @app.route('/')
 def login():
-    auth_url = create_spotify_oauth().get_authorize_url() # gets value of url given to user
-    return redirect(auth_url) # redirecting to url
+    oauth = setup_spotify_oauth()
+    auth_url = oauth.get_authorize_url()
+    return redirect(auth_url)
 
-# Redirect Route
-@app.route('/redirect')
-def redirect_page():
+# Route to handle Spotify's redirect after authorization
+@app.route('/callback')
+def callback():
     session.clear()
-   
-    code = request.args.get('code')
-    token_info = create_spotify_oauth().get_access_token(code)
-    session[TOKEN_INFO] = token_info
-    return redirect(url_for('save_discover_weekly',_external=True))
+    auth_code = request.args.get('code')
+    token_data = setup_spotify_oauth().get_access_token(auth_code)
+    session[TOKEN_KEY] = token_data
+    return redirect(url_for('store_discover_weekly', _external=True))
 
-# Save Discover Weekly Route 
-@app.route('/saveDiscoverWeekly')
-def save_discover_weekly():
-    try: 
-        token_info = get_token()
-    except:
-        print('User not logged in')
+# Route to store Discover Weekly tracks in a playlist
+@app.route('/storeDiscoverWeekly')
+def store_discover_weekly():
+    try:
+        token_data = retrieve_token()
+    except Exception as error:
+        print(f'Token retrieval error: {error}')
         return redirect("/")
 
-    sp = spotipy.Spotify(auth=token_info['access_token']) # variable for all the API requests 
+    sp_client = spotipy.Spotify(auth=token_data['access_token'])
 
-    current_playlists =  sp.current_user_playlists()['items']
-    discover_weekly_playlist_id = None
-    saved_weekly_playlist_id = None
+    user_playlists = sp_client.current_user_playlists()['items']
+    discover_weekly_id = None
+    saved_weekly_id = None
 
-    for playlist in current_playlists:
-        if(playlist['name'] == 'Discover Weekly'):
-            discover_weekly_playlist_id = playlist['id']
-        if(playlist['name'] == 'Saved Weekly'):
-            saved_weekly_playlist_id = playlist['id']
+    for playlist in user_playlists:
+        if playlist['name'] == 'Discover Weekly':
+            discover_weekly_id = playlist['id']
+        elif playlist['name'] == 'Saved Weekly':
+            saved_weekly_id = playlist['id']
     
-    if not discover_weekly_playlist_id:
-        return 'Discover Weekly not found.'
+    if not discover_weekly_id:
+        return 'Discover Weekly playlist not located.'
     
-    # creates spotify saved playlist if not already created 
-    if not saved_weekly_playlist_id:
-        temp_playlist = sp.user_playlist_create("juanaguirre158", 'Saved Weekly', True)
-        saved_weekly_playlist_id = temp_playlist
+    if not saved_weekly_id:
+        user_id = sp_client.me()['id']
+        saved_playlist = sp_client.user_playlist_create(user_id, 'Saved Weekly', public=False)
+        saved_weekly_id = saved_playlist['id']
+
+    discover_weekly_tracks = sp_client.playlist_items(discover_weekly_id)
+    track_uris = [track['track']['uri'] for track in discover_weekly_tracks['items']]
     
-    discover_weekly_playlist = sp.playlist_items(discover_weekly_playlist_id) # gets the discover weekly tracks 
+    sp_client.user_playlist_add_tracks(user_id, saved_weekly_id, track_uris)
+
+    return 'Tracks from Discover Weekly added successfully'
+
+# Function to retrieve token information from the session
+def retrieve_token():
+    token_data = session.get(TOKEN_KEY, None)
+    if not token_data:
+        return redirect(url_for('login', _external=False))
     
-    # loop through every song in discover weekly and append them into a list
-    song_uris = []
-    for song in discover_weekly_playlist['items']:
-        song_uri= song['track']['uri']
-        song_uris.append(song_uri)
-    
-    sp.user_playlist_add_tracks("juanaguirre158", saved_weekly_playlist_id, song_uris, None)
+    current_time = int(time.time())
 
-    return ('Discover Weekly songs added successfully')
+    if token_data['expires_at'] - current_time < 60:
+        oauth = setup_spotify_oauth()
+        token_data = oauth.refresh_access_token(token_data['refresh_token'])
+        session[TOKEN_KEY] = token_data
 
-def get_token():
-    token_info = session.get(TOKEN_INFO, None)
-    if not token_info:
-        redirect(url_for('login', _external=False))
-    
-    now = int(time.time())
+    return token_data
 
-    is_expired = token_info['expires_at'] - now < 60
-    if(is_expired):
-        spotify_oauth = create_spotify_oauth()
-        token_info = spotify_oauth.refresh_access_token(token_info['refresh_token'])
-
-    return token_info
-
-# Allows for access of user's spotify
-def create_spotify_oauth():
+# Function to setup Spotify OAuth
+def setup_spotify_oauth():
     return SpotifyOAuth(
-        client_id = '966f6896d45c4449bdd3f275249f5615',
-        client_secret = 'c88ac867e9bc460f97be3cd8268a2ddd',
-        redirect_uri = url_for('redirect_page', _external=True),
+        client_id='966f6896d45c4449bdd3f275249f5615',
+        client_secret='c88ac867e9bc460f97be3cd8268a2ddd',
+        redirect_uri=url_for('callback', _external=True),
         scope='user-library-read playlist-modify-public playlist-modify-private'
     )
 
-app.run(debug=True)
+if __name__ == "__main__":
+    app.run(debug=True)
